@@ -198,44 +198,7 @@ class CrawlResult(BaseModel):
         """
         self._markdown = value
     
-    @property
-    def markdown_v2(self):
-        """
-        Deprecated property that raises an AttributeError when accessed.
 
-        This property exists to inform users that 'markdown_v2' has been
-        deprecated and they should use 'markdown' instead.
-        """
-        raise AttributeError(
-            "The 'markdown_v2' attribute is deprecated and has been removed. "
-            """Please use 'markdown' instead, which now returns a MarkdownGenerationResult, with
-            following properties:
-            - raw_markdown: The raw markdown string
-            - markdown_with_citations: The markdown string with citations
-            - references_markdown: The markdown string with references
-            - fit_markdown: The markdown string with fit text
-            """
-        )
-    
-    @property
-    def fit_markdown(self):
-        """
-        Deprecated property that raises an AttributeError when accessed.
-        """
-        raise AttributeError(
-            "The 'fit_markdown' attribute is deprecated and has been removed. "
-            "Please use 'markdown.fit_markdown' instead."
-        )
-    
-    @property
-    def fit_html(self):
-        """
-        Deprecated property that raises an AttributeError when accessed.
-        """
-        raise AttributeError(
-            "The 'fit_html' attribute is deprecated and has been removed. "
-            "Please use 'markdown.fit_html' instead."
-        )
 
     def model_dump(self, *args, **kwargs):
         """
@@ -324,6 +287,22 @@ class AsyncCrawlResponse(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+    
+    def model_dump(self, *args, **kwargs):
+        """
+        Override model_dump to exclude the get_delayed_content callable which can't be JSON serialized.
+        """
+        # Exclude the callable field from serialization
+        exclude = kwargs.get('exclude', set())
+        if isinstance(exclude, set):
+            exclude = exclude.copy()
+        else:
+            exclude = set(exclude) if exclude else set()
+        
+        exclude.add('get_delayed_content')
+        kwargs['exclude'] = exclude
+        
+        return super().model_dump(*args, **kwargs)
 
 ###############################
 # Scraping Models
