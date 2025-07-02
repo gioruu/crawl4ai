@@ -721,42 +721,56 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                 )
 
             # Handle page navigation and content loading
-            if not config.js_only:
-                await self.execute_hook("before_goto", page, context=context, url=url, config=config)
+            await self.execute_hook("before_goto", page, context=context, url=url, config=config)
 
-                try:
-                    # Generate a unique nonce for this request
-                    if config.experimental.get("use_csp_nonce", False):
-                        nonce = hashlib.sha256(os.urandom(32)).hexdigest()
+            try:
+                # Generate a unique nonce for this request
+                if config.experimental.get("use_csp_nonce", False):
+                    nonce = hashlib.sha256(os.urandom(32)).hexdigest()
 
-                        # Add CSP headers to the request
-                        await page.set_extra_http_headers(
-                            {
-                                "Content-Security-Policy": f"default-src 'self'; script-src 'self' 'nonce-{nonce}' 'strict-dynamic'"
-                            }
-                        )
-
-                    response = await page.goto(
-                        url, wait_until=config.wait_until, timeout=config.page_timeout
+                    # Add CSP headers to the request
+                    await page.set_extra_http_headers(
+                        {
+                            "Content-Security-Policy": f"default-src 'self'; script-src 'self' 'nonce-{nonce}' 'strict-dynamic'"
+                        }
                     )
-                    redirected_url = page.url
-                except Error as e:
-                    raise RuntimeError(f"Failed on navigating ACS-GOTO:\n{str(e)}")
 
-                await self.execute_hook(
-                    "after_goto", page, context=context, url=url, response=response, config=config
+                response = await page.goto(
+                    url, wait_until=config.wait_until, timeout=config.page_timeout
+                )
+                redirected_url = page.url
+            except Error as e:
+                # Return failed result instead of raising exception for network errors
+                error_message = f"Failed on navigating ACS-GOTO:\n{str(e)}"
+                if self.logger:
+                    self.logger.error_status(url=url, error=error_message, tag="ERROR")
+                
+                return AsyncCrawlResponse(
+                    html="",
+                    response_headers={},
+                    status_code=0,  # Use 0 instead of None to satisfy Pydantic validation
+                    error_message=error_message,
+                    redirected_url=url,
+                    downloaded_files=[],
+                    screenshot="",
+                    pdf_data=None,
+                    network_requests=[],
+                    console_messages=[],
+                    js_execution_result=None,
+                    mhtml_data=None,
+                    ssl_certificate=None
                 )
 
-                if response is None:
-                    status_code = 200
-                    response_headers = {}
-                else:
-                    status_code = response.status
-                    response_headers = response.headers
+            await self.execute_hook(
+                "after_goto", page, context=context, url=url, response=response, config=config
+            )
 
-            else:
+            if response is None:
                 status_code = 200
                 response_headers = {}
+            else:
+                status_code = response.status
+                response_headers = response.headers
 
             # Wait for body element and visibility
             try:
@@ -793,48 +807,6 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
 
                 if not config.ignore_body_visibility:
                     raise Error(f"Body element is hidden: {visibility_info}")
-
-            # try:
-            #     await page.wait_for_selector("body", state="attached", timeout=30000)
-
-            #     await page.wait_for_function(
-            #         """
-            #         () => {
-            #             const body = document.body;
-            #             const style = window.getComputedStyle(body);
-            #             return style.display !== 'none' &&
-            #                 style.visibility !== 'hidden' &&
-            #                 style.opacity !== '0';
-            #         }
-            #     """,
-            #         timeout=30000,
-            #     )
-            # except Error as e:
-            #     visibility_info = await page.evaluate(
-            #         """
-            #         () => {
-            #             const body = document.body;
-            #             const style = window.getComputedStyle(body);
-            #             return {
-            #                 display: style.display,
-            #                 visibility: style.visibility,
-            #                 opacity: style.opacity,
-            #                 hasContent: body.innerHTML.length,
-            #                 classList: Array.from(body.classList)
-            #             }
-            #         }
-            #     """
-            #     )
-
-            #     if self.config.verbose:
-            #         self.logger.debug(
-            #             message="Body visibility info: {info}",
-            #             tag="DEBUG",
-            #             params={"info": visibility_info},
-            #         )
-
-            #     if not config.ignore_body_visibility:
-            #         raise Error(f"Body element is hidden: {visibility_info}")
 
             # Handle content loading and viewport adjustment
             if not self.browser_config.text_mode and (
@@ -899,15 +871,7 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                 await self._handle_full_page_scan(page, config.scroll_delay)
 
             # Execute JavaScript if provided
-            # if config.js_code:
-            #     if isinstance(config.js_code, str):
-            #         await page.evaluate(config.js_code)
-            #     elif isinstance(config.js_code, list):
-            #         for js in config.js_code:
-            #             await page.evaluate(js)
-
             if config.js_code:
-                # execution_result = await self.execute_user_script(page, config.js_code)
                 execution_result = await self.robust_execute_user_script(
                     page, config.js_code
                 )
@@ -930,9 +894,7 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                 await page.keyboard.press("ArrowDown")
 
             # Handle wait_for condition
-            # Todo: Decide how to handle this
             if not config.wait_for and config.css_selector and False:
-            # if not config.wait_for and config.css_selector:
                 config.wait_for = f"css:{config.css_selector}"
 
             if config.wait_for:
@@ -996,8 +958,6 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
             else:
                 html = await page.content()
             
-            # # Get final HTML content
-            # html = await page.content()
             await self.execute_hook(
                 "before_return_html", page=page, html=html, context=context, config=config
             )
@@ -1628,17 +1588,6 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                             params={"error": str(e)},
                         )
 
-                    # t1 = time.time()
-                    # try:
-                    #     await page.wait_for_load_state('networkidle', timeout=5000)
-                    #     print("Network idle after script execution in", time.time() - t1)
-                    # except Error as e:
-                    #     self.logger.warning(
-                    #         message="Network idle timeout: {error}",
-                    #         tag="JS_EXEC",
-                    #         params={"error": str(e)}
-                    #     )
-
                     results.append(result if result else {"success": True})
 
                 except Exception as e:
@@ -1728,10 +1677,6 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                     t1 = time.time()
                     await page.wait_for_load_state("domcontentloaded", timeout=5000)
 
-
-                    t1 = time.time()
-                    await page.wait_for_load_state("networkidle", timeout=5000)
-
                     results.append(result if result else {"success": True})
 
                 except Error as e:
@@ -1744,14 +1689,6 @@ class AsyncPlaywrightCrawlerStrategy(AsyncCrawlerStrategy):
                     results.append({"success": False, "error": str(e)})
 
             return {"success": True, "results": results}
-
-        except Exception as e:
-            self.logger.error(
-                message="Script execution failed: {error}",
-                tag="JS_EXEC",
-                params={"error": str(e)},
-            )
-            return {"success": False, "error": str(e)}
 
         except Exception as e:
             self.logger.error(
