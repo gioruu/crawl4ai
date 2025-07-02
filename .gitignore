@@ -265,3 +265,6 @@ tests/**/benchmark_reports
 
 docs/**/data
 .codecat/
+
+# my ignores
+notes.txt

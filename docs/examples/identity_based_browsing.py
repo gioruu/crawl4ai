@@ -14,10 +14,36 @@ import asyncio
 from crawl4ai import AsyncWebCrawler, BrowserConfig
 from crawl4ai.browser_profiler import BrowserProfiler
 from crawl4ai.async_logger import AsyncLogger
-from colorama import Fore, Style, init
+import sys
 
-# Initialize colorama
-init()
+# Safer colorama initialization - use just_fix_windows_console instead of init()
+if sys.platform == 'win32':
+    try:
+        from colorama import just_fix_windows_console
+        just_fix_windows_console()  # Safer alternative to init() - prevents conflicts with Rich
+    except ImportError:
+        pass
+    
+    # Use simple colors on Windows to avoid conflicts
+    class Colors:
+        RED = ""
+        CYAN = ""
+        YELLOW = ""
+        GREEN = ""
+        RESET = ""
+else:
+    try:
+        from colorama import Fore, Style, init
+        init()
+        class Colors:
+            RED = Fore.RED
+            CYAN = Fore.CYAN  
+            YELLOW = Fore.YELLOW
+            GREEN = Fore.GREEN
+            RESET = Style.RESET_ALL
+    except ImportError:
+        class Colors:
+            RED = CYAN = YELLOW = GREEN = RESET = ""
 
 # Create a shared logger instance
 logger = AsyncLogger(verbose=True)
@@ -28,7 +54,7 @@ profiler = BrowserProfiler(logger=logger)
 
 async def crawl_with_profile(profile_path, url):
     """Use a profile to crawl an authenticated page"""
-    logger.info(f"\nCrawling {Fore.CYAN}{url}{Style.RESET_ALL} using profile at {Fore.YELLOW}{profile_path}{Style.RESET_ALL}", tag="CRAWL")
+    logger.info(f"\nCrawling {Colors.CYAN}{url}{Colors.RESET} using profile at {Colors.YELLOW}{profile_path}{Colors.RESET}", tag="CRAWL")
     
     # Create browser config with the profile path
     browser_config = BrowserConfig(
@@ -52,7 +78,7 @@ async def crawl_with_profile(profile_path, url):
             
             # Print page title or some indication of success
             title = result.metadata.get("title", "")
-            logger.success(f"Page title: {Fore.GREEN}{title}{Style.RESET_ALL}", tag="CRAWL")
+            logger.success(f"Page title: {Colors.GREEN}{title}{Colors.RESET}", tag="CRAWL")
             return result
         else:
             # Log error status
@@ -61,11 +87,11 @@ async def crawl_with_profile(profile_path, url):
 
 
 async def main():
-    logger.info(f"{Fore.CYAN}Identity-Based Browsing Example with Crawl4AI{Style.RESET_ALL}", tag="DEMO")
+    logger.info(f"{Colors.CYAN}Identity-Based Browsing Example with Crawl4AI{Colors.RESET}", tag="DEMO")
     logger.info("This example demonstrates using profiles for authenticated browsing", tag="DEMO")
     
     # Choose between interactive mode and automatic mode
-    mode = input(f"{Fore.CYAN}Run in [i]nteractive mode or [a]utomatic mode? (i/a): {Style.RESET_ALL}").lower()
+    mode = input(f"{Colors.CYAN}Run in [i]nteractive mode or [a]utomatic mode? (i/a): {Colors.RESET}").lower()
     
     if mode == 'i':
         # Interactive profile management - use the interactive_manager method
@@ -85,7 +111,7 @@ async def main():
         else:
             # Use the first (most recent) profile
             profile_path = profiles[0]["path"]
-            logger.info(f"Using existing profile: {Fore.CYAN}{profiles[0]['name']}{Style.RESET_ALL}", tag="DEMO")
+            logger.info(f"Using existing profile: {Colors.CYAN}{profiles[0]['name']}{Colors.RESET}", tag="DEMO")
         
         # Example: Crawl an authenticated page
         urls_to_crawl = [

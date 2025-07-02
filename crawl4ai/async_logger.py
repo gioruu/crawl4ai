@@ -2,12 +2,39 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Dict, Any, List
 import os
+import sys
 from datetime import datetime
 from urllib.parse import unquote
 from rich.console import Console
 from rich.text import Text
 from .utils import create_box_message
 
+# Windows colorama recursion fix
+_WINDOWS_COLORAMA_RECURSION_LIMIT = 200
+_operation_count = 0
+
+def _check_windows_colorama_recursion():
+    """
+    Prevent colorama recursion issue on Windows after many operations.
+    This is a workaround for the known colorama.ansitowin32 recursion bug.
+    """
+    global _operation_count
+    _operation_count += 1
+    
+    if (sys.platform == 'win32' and 
+        _operation_count > _WINDOWS_COLORAMA_RECURSION_LIMIT):
+        
+        try:
+            # Check if colorama is present and wrapping stdout
+            import colorama
+            if (hasattr(sys.stdout, 'wrapped') and 
+                hasattr(colorama, 'deinit')):
+                colorama.deinit()
+                # Reset counter to allow re-enabling later if needed
+                _operation_count = 0
+        except (ImportError, AttributeError):
+            # Colorama not available or already de-initialized
+            pass
 
 class LogLevel(Enum):
     DEFAULT = 0
@@ -192,6 +219,9 @@ class AsyncLogger(AsyncLoggerBase):
         if level.value < self.log_level.value:
             return
 
+        # Windows colorama recursion prevention
+        _check_windows_colorama_recursion()
+
         # avoid conflict with rich formatting
         parsed_message = message.replace("[", "[[").replace("]", "]]")
         if params:
@@ -223,7 +253,12 @@ class AsyncLogger(AsyncLoggerBase):
 
         # Output to console if verbose
         if self.verbose or kwargs.get("force_verbose", False):
-            self.console.print(log_line)
+            try:
+                self.console.print(log_line)
+            except RecursionError:
+                # Fallback to plain print if recursion occurs
+                plain_text = Text.from_markup(log_line).plain
+                print(plain_text)
 
         # Write to file if configured
         self._write_to_file(log_line)

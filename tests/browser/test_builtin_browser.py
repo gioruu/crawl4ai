@@ -15,7 +15,16 @@ import os
 import sys
 import time
 from typing import List, Dict, Any
-from colorama import Fore, Style, init
+
+# Safer colorama initialization for Windows
+if sys.platform == 'win32':
+    try:
+        from colorama import just_fix_windows_console
+        just_fix_windows_console()  # Safer than init() - avoids conflicts with Rich
+    except ImportError:
+        pass
+else:
+    from colorama import Fore, Style
 
 # Add the project root to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -31,15 +40,24 @@ from crawl4ai.browser.strategies import BuiltinBrowserStrategy
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
 from crawl4ai.async_logger import AsyncLogger
 
-# Initialize colorama for cross-platform colored terminal output
-init()
-
-# Define colors for pretty output
-SUCCESS = Fore.GREEN
-WARNING = Fore.YELLOW
-ERROR = Fore.RED
-INFO = Fore.CYAN
-RESET = Fore.RESET
+# Define colors for pretty output - use Rich colors on Windows when colorama conflicts occur
+if sys.platform == 'win32':
+    # Use Rich console styling instead of colorama on Windows for better compatibility
+    SUCCESS = "[green]"
+    WARNING = "[yellow]" 
+    ERROR = "[red]"
+    INFO = "[cyan]"
+    RESET = "[/]"
+else:
+    try:
+        from colorama import Fore, Style
+        SUCCESS = Fore.GREEN
+        WARNING = Fore.YELLOW
+        ERROR = Fore.RED
+        INFO = Fore.CYAN
+        RESET = Fore.RESET
+    except ImportError:
+        SUCCESS = WARNING = ERROR = INFO = RESET = ""
 
 # Create logger
 logger = AsyncLogger(verbose=True)
